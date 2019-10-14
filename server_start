@@ -1,0 +1,3 @@
+sh CarlaUE4.sh -fps 20 &
+sleep 30
+python PythonAPI/util/config.py -m Town01

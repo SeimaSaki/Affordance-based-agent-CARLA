@@ -132,10 +132,31 @@ def measure_distance_to_vehicles(world, ego_vehicle) :
     
     vehicles = [(distance(x.get_location()), x) for x in vehicles if x.id != ego_vehicle.id]
     for d, vehicle in sorted(vehicles):
-        if d > 50.0:            #human vision depth range
+        if d > 10.0:            #human vision depth range = 50
             break
-        print("Distance : ", vehicle, d)
+        print("vehicle : ", vehicle , " ego vehicle loc : ", ego_vehicle.get_location(), " other vehicle loc : ", vehicle.get_location(), " distance : ", d)
+        # print("Distance : ", vehicle, d)
         # vehicle_type = get_actor_display_name(vehicle, truncate=22)
+        # self._info_text.append('% 4dm %s' % (d, vehicle_type))
+
+def measure_distance_to_pedestrians(world, ego_vehicle) :
+    t = ego_vehicle.get_transform() 
+    walkers = world.get_actors().filter('walker.*')
+    # if len(walkers) > 1:
+    #     self._info_text += ['Nearby walkers:']
+    def distance(l): 
+        # print(t)
+        # print(l)
+        return math.sqrt(
+        (l.x - t.location.x) ** 2 + (l.y - t.location.y) ** 2 + (l.z - t.location.z) ** 2)
+
+    walkers = [(distance(x.get_location()), x) for x in walkers if x.id != ego_vehicle.id]
+    for d, walker in sorted(walkers):
+        if d > 10.0:            #human vision depth range = 50
+            break
+        print("walker : ", walker , " ego walker loc : ", ego_vehicle.get_location(), " other walker loc : ", walker.get_location(), " distance : ", d)
+        # print("Distance : ", walker, d)
+        # vehicle_type = get_actor_display_name(walker, truncate=22)
         # self._info_text.append('% 4dm %s' % (d, vehicle_type))
 
 def main():
@@ -163,8 +184,8 @@ def main():
         # spawn ego vehicle
         #####################################################
         vehicle = world.spawn_actor(
-            random.choice(blueprint_library.filter('vehicle.*')),
-            # random.choice(blueprint_library.filter('vehicle.bmw.isetta')),
+            # random.choice(blueprint_library.filter('vehicle.*')),
+            random.choice(blueprint_library.filter('vehicle.bmw.isetta')),
             start_pose)
         actor_list.append(vehicle)
         vehicle.set_autopilot(True)
@@ -221,6 +242,7 @@ def main():
                 print("vehicle controls : ", vehicle.get_control())
                 print("vehicle velocity : ", vehicle.get_velocity())
                 measure_distance_to_vehicles(world, vehicle)
+                measure_distance_to_pedestrians(world, vehicle)
                 # print("vehicle controls : ", vehicle.get_control())
                 # waypoint = random.choice(waypoint.next(1.5))
                 # vehicle.set_transform(waypoint.transform)
