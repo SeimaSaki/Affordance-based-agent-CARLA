@@ -9,6 +9,7 @@
 import glob
 import os
 import sys
+import math
 
 try:
     sys.path.append(glob.glob('../carla/dist/carla-*%d.%d-%s.egg' % (
@@ -118,6 +119,24 @@ def should_quit():
                 return True
     return False
 
+def measure_distance_to_vehicles(world, ego_vehicle) :
+    t = ego_vehicle.get_transform() 
+    vehicles = world.get_actors().filter('vehicle.*')
+    # if len(vehicles) > 1:
+    #     self._info_text += ['Nearby vehicles:']
+    def distance(l): 
+        # print(t)
+        # print(l)
+        return math.sqrt(
+        (l.x - t.location.x) ** 2 + (l.y - t.location.y) ** 2 + (l.z - t.location.z) ** 2)
+    
+    vehicles = [(distance(x.get_location()), x) for x in vehicles if x.id != ego_vehicle.id]
+    for d, vehicle in sorted(vehicles):
+        if d > 50.0:            #human vision depth range
+            break
+        print("Distance : ", vehicle, d)
+        # vehicle_type = get_actor_display_name(vehicle, truncate=22)
+        # self._info_text.append('% 4dm %s' % (d, vehicle_type))
 
 def main():
     actor_list = []
@@ -138,22 +157,42 @@ def main():
         m = world.get_map()
         start_pose = random.choice(m.get_spawn_points())
         waypoint = m.get_waypoint(start_pose.location)
-
         blueprint_library = world.get_blueprint_library()
 
+        #####################################################
+        # spawn ego vehicle
+        #####################################################
         vehicle = world.spawn_actor(
             random.choice(blueprint_library.filter('vehicle.*')),
+            # random.choice(blueprint_library.filter('vehicle.bmw.isetta')),
             start_pose)
         actor_list.append(vehicle)
-        # vehicle.set_autopilot(True)
-        vehicle.set_simulate_physics(False)
+        vehicle.set_autopilot(True)
+        vehicle.set_simulate_physics(True)
+        # vehicle.set_simulate_physics(False)
 
-        camera_rgb = world.spawn_actor(
-            blueprint_library.find('sensor.camera.rgb'),
-            transform = carla.Transform(carla.Location(x=0.8, z=1.7)),
-            # carla.Transform(carla.Location(x=-5.5, z=2.8), carla.Rotation(pitch=-15)),
+        #####################################################
+        # spawn ego vehicle RGB front facing camera
+        #####################################################
+        rgb_camera_blueprint = blueprint_library.find('sensor.camera.rgb')
+        # change the dimensions of the image
+        rgb_camera_blueprint.set_attribute('image_size_x', '800')
+        rgb_camera_blueprint.set_attribute('image_size_y', '600')
+        rgb_camera_blueprint.set_attribute('fov', '110')
+         # Provide the position of the sensor relative to the vehicle.
+        rgb_camera_transform = carla.Transform(carla.Location(x=0.8, z=1.7))
+        # Tell the world to spawn the sensor, don't forget to attach it to your vehicle actor.
+        rgb_camera_sensor = world.spawn_actor(
+            rgb_camera_blueprint, 
+            rgb_camera_transform, 
             attach_to=vehicle)
-        actor_list.append(camera_rgb)
+        # add sensor to list of actors
+        actor_list.append(rgb_camera_sensor)
+
+        #####################################################
+        # spawn ego vehicle depth front facing camera
+        #####################################################
+
 
         # camera_semseg = world.spawn_actor(
         #     blueprint_library.find('sensor.camera.semantic_segmentation'),
@@ -162,8 +201,8 @@ def main():
         # actor_list.append(camera_semseg)
 
         # Create a synchronous mode context.
-        # with CarlaSyncMode(world, camera_rgb, camera_semseg, fps=30) as sync_mode:
-        with CarlaSyncMode(world, camera_rgb, fps=20) as sync_mode:
+        # with CarlaSyncMode(world, rgb_camera_sensor, camera_semseg, fps=30) as sync_mode:
+        with CarlaSyncMode(world, rgb_camera_sensor, fps=20) as sync_mode:
             while True:
                 if should_quit():
                     return
@@ -176,9 +215,12 @@ def main():
                 # Choose the next waypoint and update the car location.
                 # vehicle_control = vehicle.get_control()
                 # vehicle.apply_control(vehicle_control)
-                vehicle.set_autopilot(True)
+                # vehicle.set_autopilot(True)
+                # vehicle_control = vehicle.get_control()
+                # vehicle.apply_control(vehicle_control)
                 print("vehicle controls : ", vehicle.get_control())
                 print("vehicle velocity : ", vehicle.get_velocity())
+                measure_distance_to_vehicles(world, vehicle)
                 # print("vehicle controls : ", vehicle.get_control())
                 # waypoint = random.choice(waypoint.next(1.5))
                 # vehicle.set_transform(waypoint.transform)
