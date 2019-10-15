@@ -37,6 +37,9 @@ try:
     import queue
 except ImportError:
     import Queue as queue
+import transforms3d
+
+DEGREE_TO_RAD = 0.01745329252
 
 
 class CarlaSyncMode(object):
@@ -119,45 +122,86 @@ def should_quit():
                 return True
     return False
 
+def convert_degrees_to_rad(carla_rotation) : 
+    roll = math.radians(carla_rotation.roll)
+    pitch = -math.radians(carla_rotation.pitch)
+    yaw = -math.radians(carla_rotation.yaw)
+
+    return (roll, pitch, yaw)
+
+def convert_xyz(carla_location) : 
+    return (carla_location.x, carla_location.y, carla_location.z)
+
+def get_relative_cordinates(ego_vehicle, actor) : 
+    ego_vehicle_xyz = ego_vehicle.get_transform().location
+    actor_xyz       = actor.get_transform().location
+    relative_xyz    = actor_xyz - ego_vehicle_xyz
+    relative_xyz    = convert_xyz(relative_xyz)
+
+    ego_vehicle_rot     = ego_vehicle.get_transform().rotation
+    (roll, pitch, yaw)  = convert_degrees_to_rad(ego_vehicle_rot)
+
+    # print("ego xyz : ", ego_vehicle_xyz, " actor xyz : ", actor_xyz)
+    # print("relative xyz : ", relative_xyz)
+    # print("ego rot : ", ego_vehicle_rot, " ego rot (rad) : ", (roll, pitch, yaw))
+
+    R = transforms3d.euler.euler2mat(roll, pitch, yaw).T
+    actor_loc_relative = np.dot(R,relative_xyz)
+    # print("actor loc relative : ", actor_loc_relative)
+
+    return actor_loc_relative   
+    # print("ego rot(rad) : ", ego_vehicle_rot_rad, " actor rot(rad) : ", actor_rot_rad)
+
+def get_distance(cord): 
+        return math.sqrt(
+        cord[0] ** 2 + cord[1] ** 2 + cord[2] ** 2)
+
+def get_relative_distance_for_actors(ego_vehicle, actors) : 
+    actor_relative_cord = [(get_relative_cordinates(ego_vehicle, x), x) for x in actors if x.id != ego_vehicle.id]
+    actor_relative_dist = [(get_distance(x[0]), x[0], x[1]) for x in actor_relative_cord]
+    return actor_relative_dist
+
 def measure_distance_to_vehicles(world, ego_vehicle) :
-    t = ego_vehicle.get_transform() 
-    vehicles = world.get_actors().filter('vehicle.*')
-    # if len(vehicles) > 1:
-    #     self._info_text += ['Nearby vehicles:']
-    def distance(l): 
-        # print(t)
-        # print(l)
-        return math.sqrt(
-        (l.x - t.location.x) ** 2 + (l.y - t.location.y) ** 2 + (l.z - t.location.z) ** 2)
+    t                       = ego_vehicle.get_transform() 
+    vehicles                = world.get_actors().filter('vehicle.*')
+    vehicles_relative_dist  = get_relative_distance_for_actors(ego_vehicle, vehicles)
+
+    # for d, vehicle in sorted(vehicles):
+    for d, cord, vehicle in sorted(vehicles_relative_dist): 
+        if d > 20.0:            #human vision depth range = 50
+            break
+        # print("Close vehicle : ", d, cord, vehicle)
+        print("Close vehicle : %s : d : %.3f, x : %.3f, y : %.3f, z : %.3f" %(vehicle.type_id, d, cord[0], cord[1], cord[2])) 
+        # print("******* vehicle ", vehicle, " dist : ", d , " ****************")
+        # print("Ego Vehicle   : ", ego_vehicle.get_transform())
+        # print("Other Vehicle : ", vehicle.get_transform())
+        # input()
     
-    vehicles = [(distance(x.get_location()), x) for x in vehicles if x.id != ego_vehicle.id]
-    for d, vehicle in sorted(vehicles):
-        if d > 10.0:            #human vision depth range = 50
-            break
-        print("vehicle : ", vehicle , " ego vehicle loc : ", ego_vehicle.get_location(), " other vehicle loc : ", vehicle.get_location(), " distance : ", d)
-        # print("Distance : ", vehicle, d)
-        # vehicle_type = get_actor_display_name(vehicle, truncate=22)
-        # self._info_text.append('% 4dm %s' % (d, vehicle_type))
-
 def measure_distance_to_pedestrians(world, ego_vehicle) :
-    t = ego_vehicle.get_transform() 
-    walkers = world.get_actors().filter('walker.*')
-    # if len(walkers) > 1:
-    #     self._info_text += ['Nearby walkers:']
-    def distance(l): 
-        # print(t)
-        # print(l)
-        return math.sqrt(
-        (l.x - t.location.x) ** 2 + (l.y - t.location.y) ** 2 + (l.z - t.location.z) ** 2)
+    t                       = ego_vehicle.get_transform() 
+    walkers                 = world.get_actors().filter('walker.*')
+    walkers_relative_dist   = get_relative_distance_for_actors(ego_vehicle, vehicles)
 
-    walkers = [(distance(x.get_location()), x) for x in walkers if x.id != ego_vehicle.id]
-    for d, walker in sorted(walkers):
-        if d > 10.0:            #human vision depth range = 50
+    # for d, vehicle in sorted(vehicles):
+    for d, cord, walker in sorted(walkers_relative_dist): 
+        if d > 20.0:            #human vision depth range = 50
             break
-        print("walker : ", walker , " ego walker loc : ", ego_vehicle.get_location(), " other walker loc : ", walker.get_location(), " distance : ", d)
-        # print("Distance : ", walker, d)
-        # vehicle_type = get_actor_display_name(walker, truncate=22)
-        # self._info_text.append('% 4dm %s' % (d, vehicle_type))
+        print("Close walker : %s : d : %.3f, x : %.3f, y : %.3f, z : %.3f" %(walker.type_id, d, cord[0], cord[1], cord[2]) ) 
+#     def distance(l): 
+#         return math.sqrt(
+#         (l.x - t.location.x) ** 2 + (l.y - t.location.y) ** 2 + (l.z - t.location.z) ** 2)
+
+#     walkers = [(distance(x.get_location()), x) for x in walkers if x.id != ego_vehicle.id]
+#     for d, walker in sorted(walkers):
+#         if d > 10.0:            #human vision depth range = 50
+#             break
+    
+# def measure_vehicle_status(vehicle) : 
+#     vehicle_control     = vehicle.get_control()
+#     vehicle_velocity    = vehicle.get_velocity()
+#     vehicle_transform   = vehicle.get_transform()
+    # print("vehicle controls : ", vehicle_control)
+    # print("vehicle velocity : ", vehicle_velocity)
 
 def main():
     actor_list = []
@@ -183,19 +227,23 @@ def main():
         #####################################################
         # spawn ego vehicle
         #####################################################
-        vehicle = world.spawn_actor(
-            # random.choice(blueprint_library.filter('vehicle.*')),
-            random.choice(blueprint_library.filter('vehicle.bmw.isetta')),
-            start_pose)
+        # vehicle = world.spawn_actor(
+        #     # random.choice(blueprint_library.filter('vehicle.*')),
+        #     random.choice(blueprint_library.filter('vehicle.bmw.isetta')),
+        #     start_pose)
+        bp = blueprint_library.filter('model3')[0]
+        spawn_point = random.choice(world.get_map().get_spawn_points())
+        vehicle = world.spawn_actor(bp, spawn_point)
         actor_list.append(vehicle)
         vehicle.set_autopilot(True)
-        vehicle.set_simulate_physics(True)
+        # print("vehicle transform : ", vehicle.get_transform())
+        # vehicle.set_simulate_physics(False)
         # vehicle.set_simulate_physics(False)
 
         #####################################################
         # spawn ego vehicle RGB front facing camera
         #####################################################
-        rgb_camera_blueprint = blueprint_library.find('sensor.camera.rgb')
+        rgb_camera_blueprint = blueprint_library.find('sensor.camera.rgb')  
         # change the dimensions of the image
         rgb_camera_blueprint.set_attribute('image_size_x', '800')
         rgb_camera_blueprint.set_attribute('image_size_y', '600')
@@ -239,10 +287,13 @@ def main():
                 # vehicle.set_autopilot(True)
                 # vehicle_control = vehicle.get_control()
                 # vehicle.apply_control(vehicle_control)
-                print("vehicle controls : ", vehicle.get_control())
-                print("vehicle velocity : ", vehicle.get_velocity())
+
+                #######################################
+                # Measurements
+                #######################################
+                # measure_vehicle_status(vehicle)
                 measure_distance_to_vehicles(world, vehicle)
-                measure_distance_to_pedestrians(world, vehicle)
+                # measure_distance_to_pedestrians(world, vehicle)
                 # print("vehicle controls : ", vehicle.get_control())
                 # waypoint = random.choice(waypoint.next(1.5))
                 # vehicle.set_transform(waypoint.transform)

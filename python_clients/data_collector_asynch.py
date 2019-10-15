@@ -75,7 +75,7 @@ try:
     bp = blueprint_library.filter('model3')[0]
     spawn_point = random.choice(world.get_map().get_spawn_points())
     vehicle = world.spawn_actor(bp, spawn_point)
-    vehicle.set_autopilot(True)
+    # vehicle.set_autopilot(True)
     #vehicle.apply_control(carla.VehicleControl(throttle=1.0, steer=0.0))
     actor_list.append(vehicle)
     
@@ -101,7 +101,7 @@ try:
     # add sensor to list of actors
     actor_list.append(sensor)
 
-    # print("vehicle transform : ", vehicle.transform)
+    print("vehicle transform : ", vehicle.get_transform())
     # vehicle.set_autopilot(True)
 
     # time.sleep(5)

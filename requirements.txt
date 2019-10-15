@@ -1,0 +1,2 @@
+conda install -c cogsci pygame
+conda install -c owlas transforms3d
