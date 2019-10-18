@@ -160,33 +160,40 @@ def get_relative_distance_for_actors(ego_vehicle, actors) :
     actor_relative_cord = [(get_relative_cordinates(ego_vehicle, x), x) for x in actors if x.id != ego_vehicle.id]
     actor_relative_dist = [(get_distance(x[0]), x[0], x[1]) for x in actor_relative_cord]
     return actor_relative_dist
-
+    
 def measure_distance_to_vehicles(world, ego_vehicle) :
     t                       = ego_vehicle.get_transform() 
     vehicles                = world.get_actors().filter('vehicle.*')
     vehicles_relative_dist  = get_relative_distance_for_actors(ego_vehicle, vehicles)
 
+    vehicles_list           = []
     # for d, vehicle in sorted(vehicles):
     for d, cord, vehicle in sorted(vehicles_relative_dist): 
         if d > 20.0:            #human vision depth range = 50
             break
         # print("Close vehicle : ", d, cord, vehicle)
-        print("Close vehicle : %s : d : %.3f, x : %.3f, y : %.3f, z : %.3f" %(vehicle.type_id, d, cord[0], cord[1], cord[2])) 
+        # print("Close vehicle : %s : d : %.3f, x : %.3f, y : %.3f, z : %.3f" %(vehicle.type_id, d, cord[0], cord[1], cord[2])) 
+        vehicles_list.append((vehicle.type_id, d, cord[0], cord[1], cord[2]))
         # print("******* vehicle ", vehicle, " dist : ", d , " ****************")
         # print("Ego Vehicle   : ", ego_vehicle.get_transform())
         # print("Other Vehicle : ", vehicle.get_transform())
         # input()
-    
+    return vehicles_list
+
 def measure_distance_to_pedestrians(world, ego_vehicle) :
     t                       = ego_vehicle.get_transform() 
     walkers                 = world.get_actors().filter('walker.*')
-    walkers_relative_dist   = get_relative_distance_for_actors(ego_vehicle, vehicles)
+    walkers_relative_dist   = get_relative_distance_for_actors(ego_vehicle, walkers)
+    walkers_list            = []
 
     # for d, vehicle in sorted(vehicles):
     for d, cord, walker in sorted(walkers_relative_dist): 
         if d > 20.0:            #human vision depth range = 50
             break
-        print("Close walker : %s : d : %.3f, x : %.3f, y : %.3f, z : %.3f" %(walker.type_id, d, cord[0], cord[1], cord[2]) ) 
+        # print("Close walker : %s : d : %.3f, x : %.3f, y : %.3f, z : %.3f" %(walker.type_id, d, cord[0], cord[1], cord[2]) ) 
+        walkers_list.append((walker.type_id, d, cord[0], cord[1], cord[2]))
+
+    return walkers_list
 #     def distance(l): 
 #         return math.sqrt(
 #         (l.x - t.location.x) ** 2 + (l.y - t.location.y) ** 2 + (l.z - t.location.z) ** 2)
@@ -196,12 +203,26 @@ def measure_distance_to_pedestrians(world, ego_vehicle) :
 #         if d > 10.0:            #human vision depth range = 50
 #             break
     
-# def measure_vehicle_status(vehicle) : 
-#     vehicle_control     = vehicle.get_control()
-#     vehicle_velocity    = vehicle.get_velocity()
-#     vehicle_transform   = vehicle.get_transform()
-    # print("vehicle controls : ", vehicle_control)
+def measure_vehicle_status(vehicle) : 
+    vehicle_control     = vehicle.get_control()
+    vehicle_velocity    = vehicle.get_velocity()
+    vehicle_transform   = vehicle.get_transform()
+
+    v_throttle, v_break, v_steer = vehicle_control.throttle, vehicle_control.brake, vehicle_control.steer
+    vs_x, vs_y, vs_z             = vehicle_velocity.x, vehicle_velocity.y, vehicle_velocity.z
+    # print("vehicle controls : ", (v_throttle, v_break, v_steer))
     # print("vehicle velocity : ", vehicle_velocity)
+    return (v_throttle, v_break, v_steer, vs_x, vs_y, vs_z)
+
+def measure_distance_to_driving_lane(world, vehicle) :
+    #waypoint = world.get_map().get_waypoint(vehicle.get_location(),project_to_road=True, lane_type=(carla.LaneType.Driving | carla.LaneType.Shoulder | carla.LaneType.Sidewalk))
+    waypoint = world.get_map().get_waypoint(vehicle.get_location(),project_to_road=True, lane_type=(carla.LaneType.Driving))
+    waypoint_location = waypoint.transform.location
+    waypoint_rotation = waypoint.transform.rotation
+    vehicle_xyz = vehicle.get_transform().location
+    relative_xyz    = waypoint_location - vehicle_xyz
+    distance_of_lane   = get_distance(convert_xyz(relative_xyz))
+    return distance_of_lane
 
 def main():
     actor_list = []
@@ -221,7 +242,6 @@ def main():
     try:
         m = world.get_map()
         start_pose = random.choice(m.get_spawn_points())
-        waypoint = m.get_waypoint(start_pose.location)
         blueprint_library = world.get_blueprint_library()
 
         #####################################################
@@ -235,8 +255,8 @@ def main():
         spawn_point = random.choice(world.get_map().get_spawn_points())
         vehicle = world.spawn_actor(bp, spawn_point)
         actor_list.append(vehicle)
-        vehicle.set_autopilot(True)
-        # print("vehicle transform : ", vehicle.get_transform())
+        vehicle.set_autopilot(True)       
+        #waypoint = m.get_waypoint(vehicle.get_location(),project_to_road=True, lane_type=(carla.LaneType.Driving | carla.LaneType.Shoulder | carla.LaneType.Sidewalk)) 
         # vehicle.set_simulate_physics(False)
         # vehicle.set_simulate_physics(False)
 
@@ -291,13 +311,18 @@ def main():
                 #######################################
                 # Measurements
                 #######################################
-                # measure_vehicle_status(vehicle)
-                measure_distance_to_vehicles(world, vehicle)
-                # measure_distance_to_pedestrians(world, vehicle)
+                (v_throttle, v_break, v_steer, vs_x, vs_y, vs_z) \
+                                        = measure_vehicle_status(vehicle)
                 # print("vehicle controls : ", vehicle.get_control())
                 # waypoint = random.choice(waypoint.next(1.5))
                 # vehicle.set_transform(waypoint.transform)
-
+                vehicles_list            = measure_distance_to_vehicles(world, vehicle)
+                walkers_list             = measure_distance_to_pedestrians(world, vehicle)
+                distance_of_the_waypoint = measure_distance_to_driving_lane(world, vehicle)
+                timestamp                = snapshot.timestamp.platform_timestamp
+                # print("vehicles list : ", vehicles_list)
+                # print("walkers list : ", walkers_list)              
+                # print("Waypoint_distance:", distance_of_the_waypoint)
                 # image_semseg.convert(carla.ColorConverter.CityScapesPalette)
                 fps = round(1.0 / snapshot.timestamp.delta_seconds)
 
