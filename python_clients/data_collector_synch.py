@@ -10,7 +10,7 @@ import glob
 import os
 import sys
 import math
-
+import pickle
 try:
     sys.path.append(glob.glob('../carla/dist/carla-*%d.%d-%s.egg' % (
         sys.version_info.major,
@@ -104,7 +104,10 @@ def draw_image(surface, image, blend=False):
         image_surface.set_alpha(100)
     surface.blit(image_surface, (0, 0))
 
-
+def process_img(image, id_num) :
+    image.save_to_disk('_out_images/'+ id_num + '.png')
+    # image.save_to_disk('_out_images/%.png' % id_num)
+   
 def get_font():
     fonts = [x for x in pygame.font.get_fonts()]
     default_font = 'ubuntumono'
@@ -167,18 +170,21 @@ def measure_distance_to_vehicles(world, ego_vehicle) :
     vehicles_relative_dist  = get_relative_distance_for_actors(ego_vehicle, vehicles)
 
     vehicles_list           = []
-    # for d, vehicle in sorted(vehicles):
+    front_vehicle           = None
+    ego_vehicle_waypoint = world.get_map().get_waypoint(ego_vehicle.get_location(),project_to_road=True, lane_type=(carla.LaneType.Driving))
+    # # for d, vehicle in sorted(vehicles):
     for d, cord, vehicle in sorted(vehicles_relative_dist): 
         if d > 20.0:            #human vision depth range = 50
             break
-        # print("Close vehicle : ", d, cord, vehicle)
         # print("Close vehicle : %s : d : %.3f, x : %.3f, y : %.3f, z : %.3f" %(vehicle.type_id, d, cord[0], cord[1], cord[2])) 
-        vehicles_list.append((vehicle.type_id, d, cord[0], cord[1], cord[2]))
-        # print("******* vehicle ", vehicle, " dist : ", d , " ****************")
-        # print("Ego Vehicle   : ", ego_vehicle.get_transform())
-        # print("Other Vehicle : ", vehicle.get_transform())
-        # input()
-    return vehicles_list
+        other_vehicle_waypoint = world.get_map().get_waypoint(vehicle.get_location(),project_to_road=True, lane_type=(carla.LaneType.Driving))
+        # print("ego vehicle lane : ", ego_vehicle_waypoint.lane_id, "other vehicle lane : ", other_vehicle_waypoint.lane_id, " other vehicle : ", vehicle.type_id, " cord : ", cord)
+        # vehicle in front and current lane
+        if(other_vehicle_waypoint.lane_id == ego_vehicle_waypoint.lane_id and cord[0] > 0) :
+            # vehicles_list.append((vehicle.type_id, d, cord[0], cord[1], cord[2]))
+            front_vehicle = (vehicle.type_id, d, cord[0], cord[1], cord[2])
+            break
+    return front_vehicle
 
 def measure_distance_to_pedestrians(world, ego_vehicle) :
     t                       = ego_vehicle.get_transform() 
@@ -191,7 +197,8 @@ def measure_distance_to_pedestrians(world, ego_vehicle) :
         if d > 20.0:            #human vision depth range = 50
             break
         # print("Close walker : %s : d : %.3f, x : %.3f, y : %.3f, z : %.3f" %(walker.type_id, d, cord[0], cord[1], cord[2]) ) 
-        walkers_list.append((walker.type_id, d, cord[0], cord[1], cord[2]))
+        if(cord[0] > 0): #pedestriants in front
+            walkers_list.append((walker.type_id, d, cord[0], cord[1], cord[2]))
 
     return walkers_list
 #     def distance(l): 
@@ -224,6 +231,13 @@ def measure_distance_to_driving_lane(world, vehicle) :
     distance_of_lane   = get_distance(convert_xyz(relative_xyz))
     return distance_of_lane
 
+def get_traffic_light_status(world, vehicle) : 
+    is_traffic_light_available = vehicle.is_at_traffic_light()
+    traffic_light_state = vehicle.get_traffic_light_state()
+    # print("traffic light : ", is_traffic_light_available, " state : ", traffic_light_state)
+    return (is_traffic_light_available, str(traffic_light_state))
+
+label_dict = {}
 def main():
     actor_list = []
     pygame.init()
@@ -316,10 +330,23 @@ def main():
                 # print("vehicle controls : ", vehicle.get_control())
                 # waypoint = random.choice(waypoint.next(1.5))
                 # vehicle.set_transform(waypoint.transform)
-                vehicles_list            = measure_distance_to_vehicles(world, vehicle)
+                # vehicles_list            = measure_distance_to_vehicles(world, vehicle)
+                front_vehicle            = measure_distance_to_vehicles(world, vehicle)
                 walkers_list             = measure_distance_to_pedestrians(world, vehicle)
                 distance_of_the_waypoint = measure_distance_to_driving_lane(world, vehicle)
+                traffic_light_state      = get_traffic_light_status(world, vehicle)
                 timestamp                = snapshot.timestamp.platform_timestamp
+
+                labels = {
+                    'v_throttle' : v_throttle, 'v_break': v_break, 'v_steer': v_steer, \
+                    'front_vehicle' : front_vehicle, \
+                    'walkers_list'  : walkers_list, \
+                    'centre_dist'   : distance_of_the_waypoint, \
+                    'traffic_light' : traffic_light_state \
+                    }
+                str_timestamp              = str(timestamp)
+                label_dict[str_timestamp] = labels
+                
                 # print("vehicles list : ", vehicles_list)
                 # print("walkers list : ", walkers_list)              
                 # print("Waypoint_distance:", distance_of_the_waypoint)
@@ -327,6 +354,7 @@ def main():
                 fps = round(1.0 / snapshot.timestamp.delta_seconds)
 
                 # Draw the display.
+                process_img(image_rgb, str_timestamp)
                 draw_image(display, image_rgb)
                 # draw_image(display, image_semseg, blend=True)
                 display.blit(
@@ -338,7 +366,13 @@ def main():
                 pygame.display.flip()
 
     finally:
-
+        print(label_dict)
+        with open('_out/test_label_out.pickle', 'wb') as handle:
+            pickle.dump(label_dict, handle) #, protocol=pickle.HIGHEST_PROTOCOL)
+        print("Reading pickle....")
+        with open('_out/test_label_out.pickle', 'rb') as handle:
+            label_dict_rd = pickle.load(handle)
+            print("label dict rd ", label_dict_rd)
         print('destroying actors.')
         for actor in actor_list:
             actor.destroy()
