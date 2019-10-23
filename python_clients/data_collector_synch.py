@@ -37,7 +37,6 @@ try:
     import queue
 except ImportError:
     import Queue as queue
-import transforms3d
 
 DEGREE_TO_RAD = 0.01745329252
 
@@ -227,9 +226,15 @@ def measure_distance_to_driving_lane(world, vehicle) :
     waypoint_location = waypoint.transform.location
     waypoint_rotation = waypoint.transform.rotation
     vehicle_xyz = vehicle.get_transform().location
+    vehicle_rotation = vehicle.get_transform().rotation
     relative_xyz    = waypoint_location - vehicle_xyz
     distance_of_lane   = get_distance(convert_xyz(relative_xyz))
-    return distance_of_lane
+    (v_roll,v_pitch,v_yaw) = convert_degrees_to_rad(vehicle_rotation)
+    (l_roll, l_pitch, l_yaw)  = convert_degrees_to_rad(waypoint_rotation)
+    print("Vehilce yaw", v_yaw)
+    print("Lane yaw", l_yaw)
+    relative_angle_from_centre = l_yaw - v_yaw
+    return distance_of_lane, relative_angle_from_centre
 
 def get_traffic_light_status(world, vehicle) : 
     is_traffic_light_available = vehicle.is_at_traffic_light()
@@ -333,15 +338,16 @@ def main():
                 # vehicles_list            = measure_distance_to_vehicles(world, vehicle)
                 front_vehicle            = measure_distance_to_vehicles(world, vehicle)
                 walkers_list             = measure_distance_to_pedestrians(world, vehicle)
-                distance_of_the_waypoint = measure_distance_to_driving_lane(world, vehicle)
+                distance_of_the_waypoint, relative_angle_from_centre  = measure_distance_to_driving_lane(world, vehicle)
                 traffic_light_state      = get_traffic_light_status(world, vehicle)
                 timestamp                = snapshot.timestamp.platform_timestamp
-
+                print("Relative Angle:", relative_angle_from_centre)
                 labels = {
                     'v_throttle' : v_throttle, 'v_break': v_break, 'v_steer': v_steer, \
                     'front_vehicle' : front_vehicle, \
                     'walkers_list'  : walkers_list, \
                     'centre_dist'   : distance_of_the_waypoint, \
+                    'relative_angle_vehicle' : relative_angle_from_centre, \
                     'traffic_light' : traffic_light_state \
                     }
                 str_timestamp              = str(timestamp)
