@@ -22,7 +22,7 @@ except IndexError:
 import carla
 
 import random
-
+import transforms3d
 try:
     import pygame
 except ImportError:
@@ -242,11 +242,17 @@ def get_traffic_light_status(world, vehicle) :
     # print("traffic light : ", is_traffic_light_available, " state : ", traffic_light_state)
     return (is_traffic_light_available, str(traffic_light_state))
 
-label_dict = {}
+def change_traffic_light_state(world, vehicle, clock, count):
+    tl = vehicle.get_traffic_light()
+    if tl != None and tl.get_state() != carla.TrafficLightState.Green:
+        if count > 10 :
+            tl.set_state(carla.TrafficLightState.Green)
+
 def main():
+    label_dict = {}
     actor_list = []
     pygame.init()
-
+    count = 0
     display = pygame.display.set_mode(
         (800, 600),
         pygame.HWSURFACE | pygame.DOUBLEBUF)
@@ -315,7 +321,8 @@ def main():
                 if should_quit():
                     return
                 clock.tick()
-
+                count += 1
+                change_traffic_light_state(world, vehicle, clock, count)
                 # Advance the simulation and wait for the data.
                 # snapshot, image_rgb, image_semseg = sync_mode.tick(timeout=2.0)
                 snapshot, image_rgb = sync_mode.tick(timeout=2.0)
