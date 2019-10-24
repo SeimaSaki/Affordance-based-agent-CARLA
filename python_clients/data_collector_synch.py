@@ -40,7 +40,6 @@ except ImportError:
 
 DEGREE_TO_RAD = 0.01745329252
 
-
 class CarlaSyncMode(object):
     """
     Context manager to synchronize output from different sensors. Synchronous
@@ -167,13 +166,11 @@ def measure_distance_to_vehicles(world, ego_vehicle) :
     t                       = ego_vehicle.get_transform() 
     vehicles                = world.get_actors().filter('vehicle.*')
     vehicles_relative_dist  = get_relative_distance_for_actors(ego_vehicle, vehicles)
-
-    vehicles_list           = []
     front_vehicle           = None
     ego_vehicle_waypoint = world.get_map().get_waypoint(ego_vehicle.get_location(),project_to_road=True, lane_type=(carla.LaneType.Driving))
     # # for d, vehicle in sorted(vehicles):
     for d, cord, vehicle in sorted(vehicles_relative_dist): 
-        if d > 20.0:            #human vision depth range = 50
+        if d > 30.0:            #human vision depth range = 50
             break
         # print("Close vehicle : %s : d : %.3f, x : %.3f, y : %.3f, z : %.3f" %(vehicle.type_id, d, cord[0], cord[1], cord[2])) 
         other_vehicle_waypoint = world.get_map().get_waypoint(vehicle.get_location(),project_to_road=True, lane_type=(carla.LaneType.Driving))
@@ -183,23 +180,24 @@ def measure_distance_to_vehicles(world, ego_vehicle) :
             # vehicles_list.append((vehicle.type_id, d, cord[0], cord[1], cord[2]))
             front_vehicle = (vehicle.type_id, d, cord[0], cord[1], cord[2])
             break
+    print("Front Vehicle:", front_vehicle)
     return front_vehicle
 
 def measure_distance_to_pedestrians(world, ego_vehicle) :
     t                       = ego_vehicle.get_transform() 
     walkers                 = world.get_actors().filter('walker.*')
     walkers_relative_dist   = get_relative_distance_for_actors(ego_vehicle, walkers)
-    walkers_list            = []
+    walkers_list            = None
 
     # for d, vehicle in sorted(vehicles):
     for d, cord, walker in sorted(walkers_relative_dist): 
-        if d > 20.0:            #human vision depth range = 50
+        if d > 30.0:            #human vision depth range = 50
             break
         # print("Close walker : %s : d : %.3f, x : %.3f, y : %.3f, z : %.3f" %(walker.type_id, d, cord[0], cord[1], cord[2]) ) 
         if(cord[0] > 0): #pedestriants in front
-            walkers_list.append((walker.type_id, d, cord[0], cord[1], cord[2]))
-
+            walkers_list = (walker.type_id, d, cord[0], cord[1], cord[2])
     return walkers_list
+
 #     def distance(l): 
 #         return math.sqrt(
 #         (l.x - t.location.x) ** 2 + (l.y - t.location.y) ** 2 + (l.z - t.location.z) ** 2)
@@ -242,17 +240,19 @@ def get_traffic_light_status(world, vehicle) :
     # print("traffic light : ", is_traffic_light_available, " state : ", traffic_light_state)
     return (is_traffic_light_available, str(traffic_light_state))
 
-def change_traffic_light_state(world, vehicle, clock, count):
+def change_traffic_light_state(world, vehicle, wait_timer):
+    #wait_timer += 1
     tl = vehicle.get_traffic_light()
     if tl != None and tl.get_state() != carla.TrafficLightState.Green:
-        if count > 10 :
-            tl.set_state(carla.TrafficLightState.Green)
-
+        #if wait_timer > 10 :
+        tl.set_state(carla.TrafficLightState.Green)
+           # wait_timer = 0  
+   
 def main():
     label_dict = {}
     actor_list = []
+    wait_timer = 0
     pygame.init()
-    count = 0
     display = pygame.display.set_mode(
         (800, 600),
         pygame.HWSURFACE | pygame.DOUBLEBUF)
@@ -321,8 +321,6 @@ def main():
                 if should_quit():
                     return
                 clock.tick()
-                count += 1
-                change_traffic_light_state(world, vehicle, clock, count)
                 # Advance the simulation and wait for the data.
                 # snapshot, image_rgb, image_semseg = sync_mode.tick(timeout=2.0)
                 snapshot, image_rgb = sync_mode.tick(timeout=2.0)
@@ -333,6 +331,7 @@ def main():
                 # vehicle.set_autopilot(True)
                 # vehicle_control = vehicle.get_control()
                 # vehicle.apply_control(vehicle_control)
+                change_traffic_light_state(world, vehicle, wait_timer)
 
                 #######################################
                 # Measurements
@@ -348,7 +347,7 @@ def main():
                 distance_of_the_waypoint, relative_angle_from_centre  = measure_distance_to_driving_lane(world, vehicle)
                 traffic_light_state      = get_traffic_light_status(world, vehicle)
                 timestamp                = snapshot.timestamp.platform_timestamp
-                print("Relative Angle:", relative_angle_from_centre)
+                print("Relative Angle:", relative_angle_from_centre) 
                 labels = {
                     'v_throttle' : v_throttle, 'v_break': v_break, 'v_steer': v_steer, \
                     'front_vehicle' : front_vehicle, \
@@ -365,9 +364,9 @@ def main():
                 # print("Waypoint_distance:", distance_of_the_waypoint)
                 # image_semseg.convert(carla.ColorConverter.CityScapesPalette)
                 fps = round(1.0 / snapshot.timestamp.delta_seconds)
-
                 # Draw the display.
                 process_img(image_rgb, str_timestamp)
+                # Draw the display.
                 draw_image(display, image_rgb)
                 # draw_image(display, image_semseg, blend=True)
                 display.blit(
