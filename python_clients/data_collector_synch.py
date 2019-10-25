@@ -11,6 +11,7 @@ import os
 import sys
 import math
 import pickle
+other_actor_id = None
 try:
     sys.path.append(glob.glob('../carla/dist/carla-*%d.%d-%s.egg' % (
         sys.version_info.major,
@@ -86,6 +87,7 @@ class CarlaSyncMode(object):
         self.world.apply_settings(self._settings)
 
     def _retrieve_data(self, sensor_queue, timeout):
+        print(sensor_queue)
         while True:
             data = sensor_queue.get(timeout=timeout)
             if data.frame == self.frame:
@@ -133,9 +135,9 @@ def convert_degrees_to_rad(carla_rotation) :
 def convert_xyz(carla_location) : 
     return (carla_location.x, carla_location.y, carla_location.z)
 
-def get_relative_cordinates(ego_vehicle, actor) : 
+def get_relative_cordinates(ego_vehicle, other_actor) : 
     ego_vehicle_xyz = ego_vehicle.get_transform().location
-    actor_xyz       = actor.get_transform().location
+    actor_xyz       = other_actor.get_transform().location
     relative_xyz    = actor_xyz - ego_vehicle_xyz
     relative_xyz    = convert_xyz(relative_xyz)
 
@@ -157,9 +159,10 @@ def get_distance(cord):
         return math.sqrt(
         cord[0] ** 2 + cord[1] ** 2 + cord[2] ** 2)
 
-def get_relative_distance_for_actors(ego_vehicle, actors) : 
-    actor_relative_cord = [(get_relative_cordinates(ego_vehicle, x), x) for x in actors if x.id != ego_vehicle.id]
-    actor_relative_dist = [(get_distance(x[0]), x[0], x[1]) for x in actor_relative_cord]
+def get_relative_distance_for_actors(world, ego_vehicle, other_actor_id) : 
+    other_actor                = world.get_actors().filter('other_actor_id.*')
+    actor_relative_cord = (get_relative_cordinates(ego_vehicle, other_actor))
+    actor_relative_dist = (get_distance(x[0]), x[0], x[1])
     return actor_relative_dist
     
 def measure_distance_to_vehicles(world, ego_vehicle) :
@@ -182,6 +185,12 @@ def measure_distance_to_vehicles(world, ego_vehicle) :
             break
     print("Front Vehicle:", front_vehicle)
     return front_vehicle
+
+def measure_distance_to_vehicles_1(world, ego_vehicle) :
+    t                       = ego_vehicle.get_transform()
+    vehicles_relative_dist  = get_relative_distance_for_actors(world, ego_vehicle, other_actor_id)
+    print(vehicle_relative_dist)
+    return vehicle_relative_dist
 
 def measure_distance_to_pedestrians(world, ego_vehicle) :
     t                       = ego_vehicle.get_transform() 
@@ -247,9 +256,16 @@ def change_traffic_light_state(world, vehicle, wait_timer):
         #if wait_timer > 10 :
         tl.set_state(carla.TrafficLightState.Green)
            # wait_timer = 0  
+obstacle_sensor_frame = None
 def on_other_obstacle_sensor_listen(data) :
-    print("obstacle detected")
-
+    global other_actor_id
+    obstacle_sensor_frame = data.frame
+    print(data.actor)
+    other_actor_id = data.other_actor
+    print(data.distance)    
+    print("obstacle detected : " )
+    
+    
 def main():
     label_dict = {}
     actor_list = []
@@ -314,17 +330,17 @@ def main():
 
         obstacle_detection_blueprint = blueprint_library.find('sensor.other.obstacle')
         # change the dimensions of the image
-        obstacle_detection_blueprint.set_attribute('distance', '5')
-        obstacle_detection_blueprint.set_attribute('hit_radius', '0.5')
+        obstacle_detection_blueprint.set_attribute('distance', '30')
+        obstacle_detection_blueprint.set_attribute('hit_radius', '1')
         obstacle_detection_blueprint.set_attribute('only_dynamics', 'false')
-        
+        obstacle_detection_blueprint.set_attribute('sensor_tick', '0.001')
         # Provide the position of the sensor relative to the vehicle.
-        obstacle_detection_transform = carla.Transform(carla.Location(x=0.9, z=1.8))
+        obstacle_detection_transform = carla.Transform(carla.Location(x=0.8, z=1.7))
         # Tell the world to spawn the sensor, don't forget to attach it to your vehicle actor.
         obstacle_detection_sensor = world.spawn_actor( obstacle_detection_blueprint, obstacle_detection_transform, attach_to=vehicle)
                                               # add sensor to list of actors
-        obstacle_detection_blueprint.listen(lambda data: on_other_obstacle_sensor_listen(data))
-#        actor_list.append(obstacle_detection_sensor)
+        obstacle_detection_sensor.listen(lambda data: on_other_obstacle_sensor_listen(data))
+        #actor_list.append(obstacle_detection_sensor)
 
 
         #####################################################
@@ -340,7 +356,8 @@ def main():
 
         # Create a synchronous mode context.
         # with CarlaSyncMode(world, rgb_camera_sensor, camera_semseg, fps=30) as sync_mode:
-        with CarlaSyncMode(world, rgb_camera_sensor, obstacle_detection_sensor, fps=20) as sync_mode:
+        with CarlaSyncMode(world, rgb_camera_sensor, fps=20) as sync_mode:
+        #with CarlaSyncMode(world, rgb_camera_sensor, obstacle_detection_sensor, fps=20) as sync_mode:
             while True:
                 if should_quit():
                     return
@@ -348,7 +365,9 @@ def main():
                 # Advance the simulation and wait for the data.
                 # snapshot, image_rgb, image_semseg = sync_mode.tick(timeout=2.0)
                 snapshot, image_rgb = sync_mode.tick(timeout=2.0)
-
+                #snapshot, image_rgb, obstacle_sensor_data = sync_mode.tick(timeout=2.0)
+                #print("obstacle sensor data : ", obstacle_sensor_data)
+                print("obstacle with actor : ", other_actor_id)
                 # Choose the next waypoint and update the car location.
                 # vehicle_control = vehicle.get_control()
                 # vehicle.apply_control(vehicle_control)
@@ -356,9 +375,9 @@ def main():
                 # vehicle_control = vehicle.get_control()
                 # vehicle.apply_control(vehicle_control)
                 change_traffic_light_state(world, vehicle, wait_timer)
-                print(obstacle_detection_sensor.actor)
-                print(obstacle_detection_sensor.other_actor)
-                print(obstacle_detection_sensor.distance)
+                #print(obstacle_detection_sensor.actor)
+                #print(obstacle_detection_sensor.other_actor)
+                #print(obstacle_detection_sensor.distance)
                 #######################################
                 # Measurements
                 #######################################
@@ -368,7 +387,8 @@ def main():
                 # waypoint = random.choice(waypoint.next(1.5))
                 # vehicle.set_transform(waypoint.transform)
                 # vehicles_list            = measure_distance_to_vehicles(world, vehicle)
-                front_vehicle            = measure_distance_to_vehicles(world, vehicle)
+                #front_vehicle            = measure_distance_to_vehiclesC(world, vehicle)
+                obstacle_at_front = measure_distance_to_vehicles_1(world, vehicle)
                 walkers_list             = measure_distance_to_pedestrians(world, vehicle)
                 distance_of_the_waypoint, relative_angle_from_centre  = measure_distance_to_driving_lane(world, vehicle)
                 traffic_light_state      = get_traffic_light_status(world, vehicle)
@@ -376,7 +396,7 @@ def main():
                 print("Relative Angle:", relative_angle_from_centre) 
                 labels = {
                     'v_throttle' : v_throttle, 'v_break': v_break, 'v_steer': v_steer, \
-                    'front_vehicle' : front_vehicle, \
+                    'front_vehicle' : obstacle_at_front, \
                     'walkers_list'  : walkers_list, \
                     'centre_dist'   : distance_of_the_waypoint, \
                     'relative_angle_vehicle' : relative_angle_from_centre, \
@@ -414,7 +434,7 @@ def main():
         print('destroying actors.')
         for actor in actor_list:
             actor.destroy()
-
+        obstacle_detection_sensor.destroy()   
         pygame.quit()
         print('done.')
 
