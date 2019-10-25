@@ -247,7 +247,9 @@ def change_traffic_light_state(world, vehicle, wait_timer):
         #if wait_timer > 10 :
         tl.set_state(carla.TrafficLightState.Green)
            # wait_timer = 0  
-   
+def on_other_obstacle_sensor_listen(data) :
+    print("obstacle detected")
+
 def main():
     label_dict = {}
     actor_list = []
@@ -303,6 +305,28 @@ def main():
         # add sensor to list of actors
         actor_list.append(rgb_camera_sensor)
 
+################
+
+#Spawn obstacle detection sensor
+
+################
+
+
+        obstacle_detection_blueprint = blueprint_library.find('sensor.other.obstacle')
+        # change the dimensions of the image
+        obstacle_detection_blueprint.set_attribute('distance', '5')
+        obstacle_detection_blueprint.set_attribute('hit_radius', '0.5')
+        obstacle_detection_blueprint.set_attribute('only_dynamics', 'false')
+        
+        # Provide the position of the sensor relative to the vehicle.
+        obstacle_detection_transform = carla.Transform(carla.Location(x=0.9, z=1.8))
+        # Tell the world to spawn the sensor, don't forget to attach it to your vehicle actor.
+        obstacle_detection_sensor = world.spawn_actor( obstacle_detection_blueprint, obstacle_detection_transform, attach_to=vehicle)
+                                              # add sensor to list of actors
+        obstacle_detection_blueprint.listen(lambda data: on_other_obstacle_sensor_listen(data))
+#        actor_list.append(obstacle_detection_sensor)
+
+
         #####################################################
         # spawn ego vehicle depth front facing camera
         #####################################################
@@ -316,7 +340,7 @@ def main():
 
         # Create a synchronous mode context.
         # with CarlaSyncMode(world, rgb_camera_sensor, camera_semseg, fps=30) as sync_mode:
-        with CarlaSyncMode(world, rgb_camera_sensor, fps=20) as sync_mode:
+        with CarlaSyncMode(world, rgb_camera_sensor, obstacle_detection_sensor, fps=20) as sync_mode:
             while True:
                 if should_quit():
                     return
@@ -332,7 +356,9 @@ def main():
                 # vehicle_control = vehicle.get_control()
                 # vehicle.apply_control(vehicle_control)
                 change_traffic_light_state(world, vehicle, wait_timer)
-
+                print(obstacle_detection_sensor.actor)
+                print(obstacle_detection_sensor.other_actor)
+                print(obstacle_detection_sensor.distance)
                 #######################################
                 # Measurements
                 #######################################
