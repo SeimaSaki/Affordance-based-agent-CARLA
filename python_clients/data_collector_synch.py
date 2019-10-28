@@ -372,7 +372,7 @@ def main():
         # Create a synchronous mode context.
         # with CarlaSyncMode(world, rgb_camera_sensor, camera_semseg, fps=30) as sync_mode:
         # with CarlaSyncMode(world, rgb_camera_sensor, fps=20) as sync_mode:
-        with CarlaSyncMode(world, rgb_camera_sensor, obstacle_detection_sensor, fps=20) as sync_mode:
+        with CarlaSyncMode(world, rgb_camera_sensor, rgb_camera_sensor_2, obstacle_detection_sensor, fps=20) as sync_mode:
             front_vehicle  = None
             while True:
                 if should_quit():
