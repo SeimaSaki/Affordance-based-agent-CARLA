@@ -121,15 +121,7 @@ def draw_image(surface, image, blend=False):
 def process_img(image, id_num) :
     image.save_to_disk('_out_images/'+ id_num + '.png')
     # image.save_to_disk('_out_images/%.png' % id_num)
-#Label Point Here :
-
-def proc_image_cam2(img_cm2, unique_id) :
-
-    pygame.display.update()
-    #img_cm2.save_to_disk('out_virtual2/%f' % unique_id)
-    img_cm2.save_to_disk('out_virtual2/'+ unique_id + '.png')
-    # Create Sub Directory In Host Directory 
-
+   
 def get_font():
     fonts = [x for x in pygame.font.get_fonts()]
     default_font = 'ubuntumono'
@@ -324,27 +316,14 @@ def main():
         rgb_camera_blueprint.set_attribute('fov', '110')
          # Provide the position of the sensor relative to the vehicle.
         rgb_camera_transform = carla.Transform(carla.Location(x=0.8, z=1.7))
-
-        # Attach Secondary Camera :: 
-        #Label Point Here :::
-        # Can Alter Location Here :::
-        rgb_camera_transform_2 = carla.Transform(carla.Location(x=5.0, z=5.0))
-        
         # Tell the world to spawn the sensor, don't forget to attach it to your vehicle actor.
         rgb_camera_sensor = world.spawn_actor(
             rgb_camera_blueprint, 
             rgb_camera_transform, 
             attach_to=vehicle)
-        # Spawn the secondary Camera Here ::::
-        rgb_camera_sensor_2 = world.spawn_actor(
-            rgb_camera_blueprint, # The Camera Specs remin the same as that of primary
-            rgb_camera_transform_2, # According to new Location here 
-            attach_to=vehicle
-        )
         # add sensor to list of actors
         actor_list.append(rgb_camera_sensor)
-        actor_list.append(rgb_camera_sensor_2)
-        # Initiate Carla 
+
         #####################################################
         # spawn a obstacle sensor
         #####################################################
@@ -372,7 +351,7 @@ def main():
         # Create a synchronous mode context.
         # with CarlaSyncMode(world, rgb_camera_sensor, camera_semseg, fps=30) as sync_mode:
         # with CarlaSyncMode(world, rgb_camera_sensor, fps=20) as sync_mode:
-        with CarlaSyncMode(world, rgb_camera_sensor, rgb_camera_sensor_2, obstacle_detection_sensor, fps=20) as sync_mode:
+        with CarlaSyncMode(world, rgb_camera_sensor, obstacle_detection_sensor, fps=20) as sync_mode:
             front_vehicle  = None
             while True:
                 if should_quit():
@@ -381,18 +360,16 @@ def main():
 
                 # Advance the simulation and wait for the data.
                 # snapshot, image_rgb, image_semseg = sync_mode.tick(timeout=2.0)
-                snapshot, image_rgb, image_rgb2, obstacle_detection = sync_mode.tick(timeout=2.0)
+                snapshot, image_rgb, obstacle_detection = sync_mode.tick(timeout=2.0)
                 front_vehicle_distance = 50
                 pedestrian_distance    = 50
                 obstacle_distance      = 50
-
-
-                #calculate distance to nearest obstacle
+                #calculate distance to nearest obstacle'''
                 if(obstacle_detection is not None) : 
                     obstacle_distance = get_distance_to_actor(vehicle, obstacle_detection.other_actor)
                     if("vehicle" in obstacle_detection.other_actor.type_id) :
                         front_vehicle_distance = obstacle_distance
-                        if(front_vehicle_distance > 0) : 
+                        if(front_vehicle_distance > 0 and front_vehicle_distance < 50) : 
                             print("vehicle in front : ", obstacle_detection.other_actor, front_vehicle_distance)
                             front_vehicle = obstacle_detection.other_actor
                     else :
@@ -409,8 +386,7 @@ def main():
                             distance_temp = get_distance_to_actor(vehicle, front_vehicle)
                             if(ego_vehicle_lane_id == front_vehicle_lane_id and front_vehicle_distance >0 and front_vehicle_distance<50) :
                                 front_vehicle_distance = distance_temp
-                
-                print("FV : ", front_vehicle_distance, " FP : ", pedestrian_distance," Other : ", obstacle_distance)
+                #print("FV : ", front_vehicle_distance, " FP : ", pedestrian_distance," Other : ", obstacle_distance)
                 # Choose the next waypoint and update the car location.
                 # vehicle_control = vehicle.get_control()
                 # vehicle.apply_control(vehicle_control)
@@ -446,7 +422,10 @@ def main():
                     }
                 str_timestamp              = str(timestamp)
                 label_dict[str_timestamp] = labels
-                
+                print("Throttle : ",v_throttle, "Break : ",v_break, "Steer : ",v_steer)
+                print("front vehicle distance : ", front_vehicle_distance)
+                print("deviation from centre : ", distance_of_the_waypoint)
+
                 # print("vehicles list : ", vehicles_list)
                 # print("walkers list : ", walkers_list)              
                 # print("Waypoint_distance:", distance_of_the_waypoint)
@@ -455,14 +434,7 @@ def main():
 
                 # Draw the display.
                 process_img(image_rgb, str_timestamp)
-
-                ## For Secondary Camera Here ::::
-
-                proc_image_cam2(image_rgb2, str_timestamp)
-
                 draw_image(display, image_rgb)
-                # Not necessary as frames save automatically.
-                #draw_image(display, image_rgb2)
                 # draw_image(display, image_semseg, blend=True)
                 display.blit(
                     font.render('% 5d FPS (real)' % clock.get_fps(), True, (255, 255, 255)),
